@@ -410,15 +410,38 @@ display:grid;place-items:center}
   dlg.addEventListener('cancel',function(){frame.src=''});
 
 
-  var R=new URLSearchParams(location.search).get('r')||'';
+  var R=new URLSearchParams(location.search).get('r')||'', SID=Math.random().toString(36).slice(2,10),
+      sent={}, maxS=0, firstScroll=0, CTX={tz:'',lang:navigator.language||'',wd:!!navigator.webdriver,inp:'',jump:false};
+  try{CTX.tz=Intl.DateTimeFormat().resolvedOptions().timeZone||''}catch(e){}
   function track(ev){
     if(!'https://bennivbee.app.n8n.cloud/webhook/amys-landing')return;
-    var b=new URLSearchParams({r:R,page:'solo',event:ev,day:chosen||'',ua:navigator.userAgent,ts:new Date().toISOString()});
+    var b=new URLSearchParams({r:R,page:'solo',event:ev,day:chosen||'',ua:navigator.userAgent,ts:new Date().toISOString(),
+      sid:SID,scroll:String(maxS),tz:CTX.tz,lang:CTX.lang,wd:CTX.wd?'1':'',inp:CTX.inp,jump:CTX.jump?'1':''});
     try{if(!(navigator.sendBeacon&&navigator.sendBeacon('https://bennivbee.app.n8n.cloud/webhook/amys-landing',b)))fetch('https://bennivbee.app.n8n.cloud/webhook/amys-landing',{method:'POST',body:b,keepalive:true,mode:'no-cors'})}
     catch(e){}
   }
-  // only the WhatsApp click is reported: that is the moment worth a ping (Niv, 15.10). Nothing else leaves the page.
-  document.addEventListener('click',function(e){var t=e.target.closest('a,button');if(t&&t.id==='wa')track('whatsapp')},true);
+  // visits and reading are reported only for a lead's link (?r=); the WhatsApp click always
+  function once(ev){if(sent[ev]||!R)return;sent[ev]=1;track(ev)}
+  once('visit');
+  function input(e){
+    if(!e.isTrusted||CTX.inp)return;
+    if(e.type==='pointermove'&&!(e.movementX||e.movementY))return;
+    CTX.inp=e.type;once('engaged');
+  }
+  ['pointerdown','pointermove','wheel','touchstart','keydown'].forEach(function(t){addEventListener(t,input,{passive:true})});
+  addEventListener('scroll',function(){
+    var h=document.documentElement,p=Math.min(100,Math.round((h.scrollTop+innerHeight)/h.scrollHeight*100));
+    if(!firstScroll)firstScroll=Date.now();
+    if(p>maxS)maxS=p;
+    if(p>=90&&!CTX.inp&&Date.now()-firstScroll<800)CTX.jump=true;
+    if(maxS>=30)once('scroll_30');if(maxS>=50)once('scroll_50');if(maxS>=90)once('scroll_90');
+  },{passive:true});
+  document.addEventListener('click',function(e){
+    var t=e.target.closest('a,button');if(!t)return;
+    if(t.id==='wa'){if(e.isTrusted&&!CTX.inp)CTX.inp='click';track('whatsapp')}
+    else if(t.hasAttribute('data-video'))once('video');
+    else if(t.closest('.tour'))once('tour');
+  },true);
 
   if(window.lucide)lucide.createIcons();
 })();
